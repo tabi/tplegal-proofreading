@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tplegal-proofreading"
+version = "0.1.0"
+description = "DOCX proofreading with tracked changes"
+requires-python = ">=3.10"
+dependencies = [
+    "lxml",
+    "requests",
+    "defusedxml",
+]
+
+[project.scripts]
+proofread = "proofread_docx:main"
+
+[tool.setuptools]
+py-modules = [
+    "proofread_docx",
+    "verify_docx",
+    "ooxml",
+    "apply_corrections",
+    "merge_runs",
+    "docx_io",
+    "minidom_helpers",
+    "checkers",
+]

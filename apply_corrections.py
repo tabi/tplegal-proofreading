@@ -23,6 +23,7 @@ import argparse
 import json
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 
 from ooxml import (
@@ -125,31 +126,27 @@ def apply_correction(para, original, corrected, author, date_str, id_counter):
     return True
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Apply corrections as tracked changes')
-    parser.add_argument('unpacked_dir', help='Path to unpacked docx directory')
-    parser.add_argument('corrections_json', help='Path to corrections JSON file')
-    parser.add_argument('--author', default='Korektor AI', help='Author name for tracked changes')
-    parser.add_argument('--date', default=None, help='Date for tracked changes (ISO format)')
-    args = parser.parse_args()
+def apply_all(doc_path: str, corrections: list[dict], author: str, date_str: str) -> tuple[int, int]:
+    """Apply all corrections to a document.xml file.
 
-    if args.date is None:
-        args.date = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    Args:
+        doc_path: Path to word/document.xml (unpacked).
+        corrections: List of {"original": ..., "corrected": ..., "note": ...} dicts.
+        author: Author name for tracked changes.
+        date_str: ISO date string for tracked changes.
 
-    with open(args.corrections_json, 'r', encoding='utf-8') as f:
-        corrections = json.load(f)
+    Returns:
+        Tuple of (applied_count, total_count).
+    """
+    from lxml import etree
 
-    log.info("Loaded %d corrections", len(corrections))
-
-    doc_path = os.path.join(args.unpacked_dir, 'word', 'document.xml')
     tree = etree.parse(doc_path)
     root = tree.getroot()
-
     id_counter = IdCounter(find_max_id(tree))
-
     paragraphs = root.findall(f'.//{W}p')
 
     applied = 0
+    total = 0
     for corr in corrections:
         original = corr['original']
         corrected = corr['corrected']
@@ -157,11 +154,12 @@ def main():
         if original == corrected:
             continue
 
+        total += 1
         found = False
         for para in paragraphs:
             full_text = get_paragraph_text(para)
             if original in full_text or original.lower() in full_text.lower():
-                if apply_correction(para, original, corrected, args.author, args.date, id_counter):
+                if apply_correction(para, original, corrected, author, date_str, id_counter):
                     applied += 1
                     found = True
                     log.info("Applied: '%s' → '%s'", original, corrected)
@@ -170,10 +168,55 @@ def main():
         if not found:
             log.warning("SKIPPED: '%s' not found in document", original)
 
-    log.info("Applied %d/%d corrections", applied, len(corrections))
-
     tree.write(doc_path, xml_declaration=True, encoding='UTF-8', standalone=True)
-    log.info("Saved to %s", doc_path)
+    return applied, total
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Apply proofreading corrections to a DOCX file as tracked changes'
+    )
+    parser.add_argument('docx', help='Input DOCX file')
+    parser.add_argument('corrections_json', help='Path to corrections JSON file')
+    parser.add_argument('-o', '--output', default=None, help='Output DOCX path (default: <input>_corrected.docx)')
+    parser.add_argument('--author', default='Korektor AI', help='Author name for tracked changes')
+    parser.add_argument('--date', default=None, help='Date for tracked changes (ISO format)')
+    args = parser.parse_args()
+
+    if args.date is None:
+        args.date = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    if args.output is None:
+        base, ext = os.path.splitext(args.docx)
+        args.output = f"{base}_corrected{ext}"
+
+    with open(args.corrections_json, 'r', encoding='utf-8') as f:
+        corrections = json.load(f)
+
+    log.info("Loaded %d corrections from %s", len(corrections), args.corrections_json)
+
+    # Unpack → Apply → Pack
+    import tempfile
+    from docx_io import unpack, pack
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        unpack(args.docx, tmpdir)
+        doc_xml_path = os.path.join(tmpdir, 'word', 'document.xml')
+
+        applied, total = apply_all(doc_xml_path, corrections, args.author, args.date)
+        log.info("Applied %d/%d corrections", applied, total)
+
+        pack(tmpdir, args.output, original_docx=args.docx)
+
+    log.info("Output: %s", args.output)
+
+    # Exit codes: 0=all applied, 1=partial, 2=error
+    if total > 0 and applied == 0:
+        sys.exit(2)
+    elif applied < total:
+        sys.exit(1)
+    else:
+        sys.exit(0)
 
 
 if __name__ == '__main__':

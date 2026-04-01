@@ -1,11 +1,16 @@
 """Tests for apply_corrections.py — correction application logic."""
 
+import json
+import subprocess
 import sys, os
+import tempfile
+import zipfile
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from lxml import etree
 from ooxml import W, IdCounter, get_runs_with_text
-from apply_corrections import apply_correction
+from apply_corrections import apply_correction, apply_all
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -94,3 +99,105 @@ class TestApplyCorrection:
         idc = IdCounter(100)
         assert apply_correction(p, 'kta', 'kota', 'Test', '2026-01-01T00:00:00Z', idc) is True
         assert len(p.findall(f'.//{W}del')) == 2
+
+
+# ── CLI + pipeline tests ─────────────────────────────────────────────────
+
+W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+
+
+def _make_test_docx(path: str, body_xml: str):
+    doc_xml = (
+        f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<w:document xmlns:w="{W_NS}">'
+        f'<w:body>{body_xml}</w:body>'
+        f'</w:document>'
+    )
+    with zipfile.ZipFile(path, 'w') as zf:
+        zf.writestr('[Content_Types].xml', '<?xml version="1.0"?><Types/>')
+        zf.writestr('word/document.xml', doc_xml)
+
+
+class TestApplyAllFunction:
+    def test_apply_all_returns_counts(self, tmp_path):
+        docx_path = str(tmp_path / 'input.docx')
+        _make_test_docx(docx_path, '<w:p><w:r><w:t>Ala ma kta.</w:t></w:r></w:p>')
+
+        # Unpack
+        from docx_io import unpack
+        unpacked = str(tmp_path / 'unpacked')
+        unpack(docx_path, unpacked)
+
+        corrections = [
+            {"original": "kta", "corrected": "kota", "note": "test"},
+        ]
+        applied, total = apply_all(
+            os.path.join(unpacked, 'word', 'document.xml'),
+            corrections, 'Test', '2026-01-01T00:00:00Z',
+        )
+        assert applied == 1
+        assert total == 1
+
+    def test_apply_all_skips_identical(self, tmp_path):
+        docx_path = str(tmp_path / 'input.docx')
+        _make_test_docx(docx_path, '<w:p><w:r><w:t>Tekst.</w:t></w:r></w:p>')
+
+        from docx_io import unpack
+        unpacked = str(tmp_path / 'unpacked')
+        unpack(docx_path, unpacked)
+
+        corrections = [{"original": "Tekst", "corrected": "Tekst", "note": "no-op"}]
+        applied, total = apply_all(
+            os.path.join(unpacked, 'word', 'document.xml'),
+            corrections, 'Test', '2026-01-01T00:00:00Z',
+        )
+        assert applied == 0
+        assert total == 0  # identical corrections are not counted
+
+
+class TestApplyCorrectionsCLI:
+    def test_cli_smoke(self, tmp_path):
+        docx_path = str(tmp_path / 'input.docx')
+        _make_test_docx(docx_path, '<w:p><w:r><w:t>Ala ma kta.</w:t></w:r></w:p>')
+
+        corrections_path = str(tmp_path / 'corr.json')
+        with open(corrections_path, 'w') as f:
+            json.dump([{"original": "kta", "corrected": "kota", "note": "fix"}], f)
+
+        output_path = str(tmp_path / 'output.docx')
+        result = subprocess.run(
+            [sys.executable, '-m', 'apply_corrections', docx_path, corrections_path, '-o', output_path],
+            capture_output=True, text=True,
+            cwd=os.path.join(os.path.dirname(__file__), '..'),
+        )
+        assert result.returncode == 0
+        assert os.path.exists(output_path)
+
+        # Verify it's a valid zip
+        with zipfile.ZipFile(output_path) as zf:
+            assert 'word/document.xml' in zf.namelist()
+
+
+class TestFullPipeline:
+    def test_extract_apply_verify(self, tmp_path):
+        """Full pipeline: extract → (mock corrections) → apply → verify."""
+        docx_path = str(tmp_path / 'input.docx')
+        _make_test_docx(docx_path, '<w:p><w:r><w:t>Ala ma kta i psa.</w:t></w:r></w:p>')
+
+        corrections = [{"original": "kta", "corrected": "kota", "note": "fix"}]
+        corrections_path = str(tmp_path / 'corr.json')
+        with open(corrections_path, 'w') as f:
+            json.dump(corrections, f)
+
+        output_path = str(tmp_path / 'output.docx')
+        result = subprocess.run(
+            [sys.executable, '-m', 'apply_corrections', docx_path, corrections_path, '-o', output_path],
+            capture_output=True, text=True,
+            cwd=os.path.join(os.path.dirname(__file__), '..'),
+        )
+        assert result.returncode == 0
+
+        # Verify: original(visible) vs corrected(original) should match
+        from verify_docx import compare
+        exit_code = compare(docx_path, output_path, quiet=True)
+        assert exit_code == 0

@@ -40,8 +40,14 @@ class DocStats:
     header_footer_count: int = 0
 
 
-def extract_stats(docx_path: str) -> DocStats:
-    """Extract text and structural stats from a DOCX file."""
+def extract_stats(docx_path: str, mode: str = "visible") -> DocStats:
+    """Extract text and structural stats from a DOCX file.
+
+    Args:
+        docx_path: Path to the DOCX file.
+        mode: 'visible' — text as Word displays it.
+              'original' — text before tracked changes were applied.
+    """
     path = Path(docx_path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {docx_path}")
@@ -67,7 +73,7 @@ def extract_stats(docx_path: str) -> DocStats:
 
         # Extract paragraphs
         for p_elem in _find_elements(root, "p"):
-            text = _extract_paragraph_text(p_elem)
+            text = _extract_paragraph_text(p_elem, mode=mode)
             stats.paragraphs.append(text)
             stats.total_chars += len(text)
 
@@ -89,13 +95,13 @@ def compare(original_path: str, corrected_path: str, strict: bool = False, dump:
     Returns exit code: 0=OK, 1=WARNING, 2=ERROR, 3=FATAL
     """
     try:
-        orig = extract_stats(original_path)
+        orig = extract_stats(original_path, mode="visible")
     except Exception as e:
         print(f"FATAL: Cannot read original file: {e}", file=sys.stderr)
         return 3
 
     try:
-        corr = extract_stats(corrected_path)
+        corr = extract_stats(corrected_path, mode="original")
     except Exception as e:
         print(f"FATAL: Cannot read corrected file: {e}", file=sys.stderr)
         return 3

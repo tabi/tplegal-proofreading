@@ -4,26 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tplegal-proofreading"
-version = "0.1.0"
-description = "DOCX proofreading with tracked changes"
+version = "2.0.0"
+description = "DOCX proofreading with tracked changes — Claude-as-corrector toolkit"
 requires-python = ">=3.10"
 dependencies = [
     "lxml",
-    "requests",
     "defusedxml",
 ]
 
 [project.scripts]
-proofread = "proofread_docx:main"
+extract-text = "extract_text:main"
+apply-corrections = "apply_corrections:main"
+verify-docx = "verify_docx:main"
 
 [tool.setuptools]
 py-modules = [
-    "proofread_docx",
+    "extract_text",
+    "apply_corrections",
     "verify_docx",
     "ooxml",
-    "apply_corrections",
-    "merge_runs",
     "docx_io",
     "minidom_helpers",
-    "checkers",
 ]

@@ -60,11 +60,12 @@ class TestApplyCorrection:
         assert p.findall(f'.//{W}delText')[0].text == 'kta'
         assert p.findall(f'.//{W}ins//{W}t')[0].text == 'kota'
 
-    def test_case_insensitive_fallback(self):
+    def test_no_case_insensitive_fallback(self):
+        # v2.3: fallback usunięty — dopasowanie tylko dokładne (audyt 24.09.2026)
         p = _make_paragraph(['Wielka Litera'])
         idc = IdCounter(100)
-        assert apply_correction(p, 'wielka litera', 'mała litera', 'Test', '2026-01-01T00:00:00Z', idc) is True
-        assert idc.value == 102
+        assert apply_correction(p, 'wielka litera', 'mała litera', 'Test', '2026-01-01T00:00:00Z', idc) is False
+        assert idc.value == 100
 
     def test_not_found(self):
         p = _make_paragraph(['Ala ma kota.'])

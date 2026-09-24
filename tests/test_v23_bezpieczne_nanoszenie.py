@@ -440,6 +440,48 @@ class TestPoPrzegladzie:
         assert verify(src, out)['ok'] is True
 
 
+SUP = '<w:rPr><w:vertAlign w:val="superscript"/></w:rPr>'
+SUB = '<w:rPr><w:vertAlign w:val="subscript"/></w:rPr>'
+
+
+class TestIndeksGorny:
+    BODY = (
+        '<w:p><w:r><w:t xml:space="preserve">zgodnie z art. 730</w:t></w:r>'
+        f'<w:r>{SUP}<w:t>1</w:t></w:r>'
+        '<w:r><w:t xml:space="preserve"> § 2</w:t></w:r>'
+        f'<w:r>{SUP}<w:t>1</w:t></w:r>'
+        '<w:r><w:t xml:space="preserve"> k.p.c. interes ktory jest</w:t></w:r></w:p>'
+    )
+
+    def test_extract_pokazuje_indeks_gorny(self, tmp_path):
+        line = extract_text(_docx(tmp_path / 'x.docx', self.BODY))[0]
+        assert line == '¶001: zgodnie z art. 730¹ § 2¹ k.p.c. interes ktory jest'
+
+    def test_indeks_dolny_i_litery(self, tmp_path):
+        body = (f'<w:p><w:r><w:t>CO</w:t></w:r><w:r>{SUB}<w:t>2</w:t></w:r>'
+                f'<w:r><w:t xml:space="preserve"> i przypis</w:t></w:r><w:r>{SUP}<w:t>a)</w:t></w:r></w:p>')
+        assert extract_text(_docx(tmp_path / 'x.docx', body))[0] == '¶001: CO₂ i przypis^(a))'
+
+    def test_korekta_obok_indeksu_naniesiona(self, tmp_path):
+        src, out, res = _apply(tmp_path, self.BODY, [
+            {'original': '§ 2¹ k.p.c. interes ktory', 'corrected': '§ 2¹ k.p.c. interes, który'},
+        ])
+        assert _statuses(res) == ['applied']
+        assert _doc_xml(out).count('superscript') == 2
+        assert verify(src, out)['ok'] is True
+
+    def test_korekta_obejmujaca_indeks_odrzucona(self, tmp_path):
+        src, out, res = _apply(tmp_path, self.BODY, [{'original': 'art. 730¹', 'corrected': 'art. 730^1'}])
+        assert _statuses(res) == ['rejected']
+        assert 'indeks' in res[0]['reason']
+
+    def test_wstawienie_cyfry_indeksu_jako_tekstu_odrzucone(self, tmp_path):
+        body = '<w:p><w:r><w:t>zgodnie z art. 730 k.p.c.</w:t></w:r></w:p>'
+        src, out, res = _apply(tmp_path, body, [{'original': 'art. 730 k.p.c.', 'corrected': 'art. 730¹ k.p.c.'}])
+        assert _statuses(res) == ['rejected']
+        assert 'cyfr' in res[0]['reason']
+
+
 @pytest.mark.parametrize('body', [
     '<w:p><w:r><w:t>Ala ma kta.</w:t></w:r></w:p>',
     '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Komorka umwoa.</w:t></w:r></w:p></w:tc></w:tr></w:tbl>',

@@ -43,8 +43,8 @@ from datetime import datetime, timezone
 from lxml import etree
 
 from docmodel import (
-    W, XML_SPACE, Document, Paragraph, max_annotation_id, normalize_spaces, parse_xml, rpr_signature,
-    scan_paragraph,
+    SCRIPT_DIGITS, W, XML_SPACE, Document, Paragraph, max_annotation_id, normalize_spaces, parse_xml,
+    rpr_signature, scan_paragraph,
 )
 from ooxml import IdCounter, make_ins
 
@@ -52,6 +52,7 @@ log = logging.getLogger(__name__)
 
 TOKEN_RE = re.compile(r'\w+|\s+|[^\w\s]')
 PROTECTED_CHARS = set('&@/\\_')
+DIGIT_RE = re.compile(rf'[\d{SCRIPT_DIGITS}]')
 
 STATUS_APPLIED = 'applied'
 STATUS_REJECTED = 'rejected'
@@ -137,7 +138,7 @@ def _find_occurrences(doc: Document, needle: str) -> list[tuple[Paragraph, int]]
 
 def _check_content(text: str, s: int, e: int, ins: str) -> str | None:
     deleted = text[s:e]
-    if re.findall(r'\d', deleted) != re.findall(r'\d', ins):
+    if DIGIT_RE.findall(deleted) != DIGIT_RE.findall(ins):
         return 'korekta zmienia cyfry (numery, daty, kwoty, sygnatury) — zakazane'
     neighbours = (text[s - 1] if s > 0 else '') + (text[e] if e < len(text) else '')
     touched = (set(deleted) | set(ins) | set(neighbours)) & PROTECTED_CHARS

@@ -19,7 +19,7 @@ Wątpliwość = nie poprawiasz. Pusta lista korekt to poprawny wynik.
 
 **1. Instalacja**
 ```bash
-pip install "git+https://github.com/tabi/tplegal-proofreading.git@v2.3.0" --break-system-packages -q
+pip install "git+https://github.com/tabi/tplegal-proofreading.git@v2.3.1" --break-system-packages -q
 ```
 
 **2. Tekst**
@@ -27,7 +27,7 @@ pip install "git+https://github.com/tabi/tplegal-proofreading.git@v2.3.0" --brea
 extract-text input.docx > tekst.txt
 cat tekst.txt
 ```
-Każdy akapit to linia `¶NNN: tekst`. Znaczniki `\t` (tabulator), `↵` (złamanie wiersza), `[^N]` (przypis), `[obraz]` to nie tekst — nie obejmuj ich poprawką. Przeczytaj tekst raz, akapit po akapicie.
+Każdy akapit to linia `¶NNN: tekst`. Znaczniki `\t` (tabulator), `↵` (złamanie wiersza), `[^N]` (przypis), `[obraz]`, indeks górny/dolny (`730¹`, `§ 2¹`, `^(…)`) to nie tekst — nie obejmuj ich poprawką. Przeczytaj tekst raz, akapit po akapicie.
 
 **3. corrections.json** — jedna pozycja = jeden błąd:
 ```json

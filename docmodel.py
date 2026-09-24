@@ -113,6 +113,27 @@ def normalize_spaces(text: str) -> str:
     return text.replace(' ', ' ').replace(' ', ' ')
 
 
+_SUP = str.maketrans('0123456789+-=()', '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾')
+_SUB = str.maketrans('0123456789+-=()', '₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎')
+SCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉'
+
+
+def _vert_align(rpr: etree._Element | None) -> str | None:
+    if rpr is None:
+        return None
+    el = rpr.find(f'{W}vertAlign')
+    val = el.get(f'{W}val') if el is not None else None
+    return val if val in ('superscript', 'subscript') else None
+
+
+def script_display(text: str, kind: str) -> str:
+    """Indeks górny/dolny jako znaki Unicode (730¹, CO₂); gdy się nie da — ^(…) / _(…)."""
+    table, marker = (_SUP, '^') if kind == 'superscript' else (_SUB, '_')
+    if text and all(ch.translate(table) != ch for ch in text):
+        return text.translate(table)
+    return f'{marker}({text})'
+
+
 def _local(tag) -> str:
     return tag.split('}', 1)[-1] if isinstance(tag, str) else ''
 
@@ -169,11 +190,16 @@ class _Walker:
         run_lock = lock
         if run_lock is None and rpr is not None and rpr.find(f'{W}rPrChange') is not None:
             run_lock = LOCK_FORMAT_CHANGE
+        script = _vert_align(rpr)
         for c in r:
             tag = c.tag
             if not isinstance(tag, str) or tag in _IGNORABLE_RUN_CHILDREN:
                 continue
-            if tag == f'{W}t':
+            if tag == f'{W}t' and script:
+                # Indeks górny/dolny (art. 730¹, § 2¹) — pokazany, ale nietykalny.
+                name = 'indeks górny' if script == 'superscript' else 'indeks dolny'
+                self.token(script_display(c.text or '', script), name, r, container)
+            elif tag == f'{W}t':
                 item_lock = run_lock or (LOCK_FIELD if self.fields else None)
                 self.items.append(Item('text', c.text or '', run=r, t=c, container=container, lock=item_lock))
             elif tag in (f'{W}tab', f'{W}ptab'):

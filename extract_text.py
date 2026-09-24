@@ -7,7 +7,7 @@ wyświetla dokument: bez tekstu usuniętego (w:del), z tekstem wstawionym (w:ins
 i hiperłączami.
 
 Elementy nietekstowe są widoczne jako znaczniki, których NIE wolno zmieniać:
-  \\t tabulator, ↵ złamanie wiersza, [^N] odnośnik przypisu, [obraz], [wzór], □ symbol.
+  \\t tabulator, ↵ złamanie wiersza, [^N] odnośnik przypisu, [obraz], [wzór], □ symbol, ¹ ₂ ^(…) indeks górny/dolny.
 
 Usage:
     extract-text input.docx > tekst.txt
@@ -22,7 +22,7 @@ from docmodel import Document, parse_xml
 
 LEGEND = (
     'Zakres: treść główna. Przypisy, nagłówki, stopki i pola tekstowe NIE są czytane.\n'
-    'Znaczniki (nie zmieniaj ich): \\t tabulator, ↵ złamanie wiersza, [^N] przypis, [obraz], [wzór], □ symbol.'
+    'Znaczniki (nie zmieniaj ich): \\t tabulator, ↵ złamanie wiersza, [^N] przypis, [obraz], [wzór], □ symbol, ¹ ₂ ^(…) indeks górny/dolny.'
 )
 
 

@@ -20,7 +20,7 @@ verify-docx input.docx output.docx
 
 ### `extract-text`
 
-Numerowane akapity treści głównej (`¶001: …`) — ten sam tekst i numeracja, na których pracuje `apply-corrections`. Znaczniki elementów nietekstowych: `\t` tabulator, `↵` złamanie wiersza, `[^N]` przypis, `[obraz]`, `[wzór]`, `□` symbol. Przypisy, nagłówki, stopki i pola tekstowe nie są czytane.
+Numerowane akapity treści głównej (`¶001: …`) — ten sam tekst i numeracja, na których pracuje `apply-corrections`. Znaczniki elementów nietekstowych: `\t` tabulator, `↵` złamanie wiersza, `[^N]` przypis, `[obraz]`, `[wzór]`, `□` symbol, `¹` `₂` `^(…)` indeks górny/dolny (np. art. 730¹). Przypisy, nagłówki, stopki i pola tekstowe nie są czytane.
 
 ### `apply-corrections`
 
@@ -78,6 +78,7 @@ python3 -m pytest tests -q
 
 ## Historia
 
+- **2.3.1** (24.09.2026) — indeks górny/dolny widoczny w `extract-text` (art. 730¹ zamiast „7301”) i nietykalny; blokada cyfr obejmuje cyfry indeksów.
 - **2.3.0** (24.09.2026) — wspólny docmodel, minimalne śledzone zmiany, blokady, `verify-docx` ze ścisłą kontrolą i listą zmian. Wersja „2.2” opisywana w Outline nigdy nie trafiła do repo.
 - **2.0.0** (01.04.2026) — Claude-as-corrector, 3 CLI.
 - **1.x** (03.2026) — LanguageTool, wycofany (psuł nazwy własne i sygnatury).

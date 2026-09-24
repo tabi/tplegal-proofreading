@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tplegal-proofreading"
-version = "2.3.0"
+version = "2.3.1"
 description = "DOCX proofreading with tracked changes — Claude-as-corrector toolkit"
 requires-python = ">=3.10"
 dependencies = [

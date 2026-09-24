@@ -49,7 +49,9 @@ _TRANSPARENT_CONTAINERS = {f'{W}hyperlink', f'{W}smartTag', f'{W}customXml', f'{
 _IGNORABLE_RUN_CHILDREN = {f'{W}rPr', f'{W}lastRenderedPageBreak', f'{W}instrText', f'{W}delInstrText', f'{W}delText'}
 
 # Cechy w:rPr bez wpływu na wygląd — ignorowane przy porównaniu formatowania.
-_RPR_NONVISUAL = {f'{W}lang', f'{W}noProof', f'{W}rFonts'}
+_RPR_NONVISUAL = {f'{W}lang', f'{W}noProof'}
+# Atrybuty w:rFonts dla pism spoza łacinki / podpowiedzi — bez wpływu na polski tekst.
+_RFONTS_NONVISUAL = {f'{W}hint', f'{W}eastAsia', f'{W}eastAsiaTheme', f'{W}cs', f'{W}cstheme'}
 
 
 def xml_parser() -> etree.XMLParser:
@@ -92,10 +94,23 @@ def rpr_signature(rpr: etree._Element | None) -> bytes:
         return b''
     clone = etree.Element(rpr.tag)
     for child in rpr:
-        if child.tag in _RPR_NONVISUAL or not isinstance(child.tag, str):
+        if not isinstance(child.tag, str) or child.tag in _RPR_NONVISUAL:
             continue
-        clone.append(etree.fromstring(etree.tostring(child)))
+        copy_ = etree.fromstring(etree.tostring(child))
+        if child.tag == f'{W}rFonts':
+            for key in [k for k in copy_.attrib if k in _RFONTS_NONVISUAL]:
+                del copy_.attrib[key]
+            if not copy_.attrib:
+                continue
+        clone.append(copy_)
+    if len(clone) == 0:
+        return b''
     return etree.tostring(clone, method='c14n')
+
+
+def normalize_spaces(text: str) -> str:
+    """Twarda spacja i wąska twarda spacja → zwykła (ta sama długość — offsety bez zmian)."""
+    return text.replace(' ', ' ').replace(' ', ' ')
 
 
 def _local(tag) -> str:

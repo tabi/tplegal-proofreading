@@ -43,7 +43,8 @@ from datetime import datetime, timezone
 from lxml import etree
 
 from docmodel import (
-    W, XML_SPACE, Document, Paragraph, max_annotation_id, parse_xml, rpr_signature, scan_paragraph,
+    W, XML_SPACE, Document, Paragraph, max_annotation_id, normalize_spaces, parse_xml, rpr_signature,
+    scan_paragraph,
 )
 from ooxml import IdCounter, make_ins
 
@@ -102,14 +103,19 @@ def validate_corrections(data) -> list[dict]:
 # ── Plan zmian: tylko różniące się tokeny ─────────────────────────────────
 
 def plan_edits(original: str, corrected: str) -> list[tuple[int, int, str]]:
-    """Lista (start, end, wstawka) względem `original` — minimalne różnice na poziomie wyrazów."""
+    """Lista (start, end, wstawka) względem `original` — minimalne różnice na poziomie wyrazów.
+
+    Twarda spacja w dokumencie i zwykła spacja w korekcie to NIE jest różnica.
+    """
     a = TOKEN_RE.findall(original)
     b = TOKEN_RE.findall(corrected)
     pos = [0]
     for tok in a:
         pos.append(pos[-1] + len(tok))
     edits = []
-    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+    keys_a = [normalize_spaces(t) for t in a]
+    keys_b = [normalize_spaces(t) for t in b]
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, keys_a, keys_b, autojunk=False).get_opcodes():
         if tag != 'equal':
             edits.append((pos[i1], pos[i2], ''.join(b[j1:j2])))
     return edits
@@ -117,8 +123,9 @@ def plan_edits(original: str, corrected: str) -> list[tuple[int, int, str]]:
 
 def _find_occurrences(doc: Document, needle: str) -> list[tuple[Paragraph, int]]:
     hits = []
+    needle = normalize_spaces(needle)
     for para in doc.numbered():
-        text = para.text
+        text = normalize_spaces(para.text)
         start = text.find(needle)
         while start != -1:
             hits.append((para, start))
@@ -144,7 +151,10 @@ def _insertion_anchor(para: Paragraph, s: int):
     """Run, do którego dokleić wstawkę w pozycji s: (item, 'after'|'before') albo (None, powód)."""
     before = [i for i in para.items if i.kind == 'text' and i.start < s <= i.end]
     after = [i for i in para.items if i.kind == 'text' and i.start == s and i.end > s]
-    for item, side in [(x, 'after') for x in before] + [(x, 'before') for x in after]:
+    candidates = [(x, 'after') for x in before] + [(x, 'before') for x in after]
+    # Najpierw run bezpośrednio w akapicie — wstawka nie może wejść do hiperłącza/kontrolki obok.
+    candidates.sort(key=lambda c: c[0].container is not para.elem)
+    for item, side in candidates:
         if item.lock is None:
             return item, side
     locked = [i.lock for i in before + after if i.lock]
@@ -322,6 +332,10 @@ def apply_one(doc: Document, corr: dict, id_counter: IdCounter, author: str, dat
     result['paragraph'] = para.index
     text = para.text
     edits = [(offset + s, offset + e, ins) for s, e, ins in plan_edits(original, corrected)]
+    if not edits:
+        result['status'] = STATUS_NOOP
+        result['reason'] = 'brak różnicy (np. tylko twarda spacja ↔ zwykła spacja)'
+        return result
     for s, e, ins in edits:
         reason = _check_span(para, s, e, ins) or _check_content(text, s, e, ins)
         if reason:

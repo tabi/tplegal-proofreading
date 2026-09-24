@@ -374,6 +374,72 @@ class TestDodatkoweBlokady:
         assert [(c['deleted'], c['inserted']) for c in report['changes']] == [('kta', 'kota')]
 
 
+class TestPoPrzegladzie:
+    def test_twarda_spacja_dopasowana_zwykla_spacja(self, tmp_path):
+        body = '<w:p><w:r><w:t>zgodnie z umwoa stron</w:t></w:r></w:p>'
+        src, out, res = _apply(tmp_path, body, [{'original': 'z umwoa', 'corrected': 'z umowa'}])
+        assert _statuses(res) == ['applied']
+        assert res[0]['edits'] == [{'deleted': 'umwoa', 'inserted': 'umowa'}]
+        assert ' ' in _doc_xml(out)
+        assert verify(src, out)['ok'] is True
+
+    def test_twarda_spacja_skopiowana_dokladnie_na_zwykla_w_dokumencie(self, tmp_path):
+        body = '<w:p><w:r><w:t>zgodnie z umwoa stron</w:t></w:r></w:p>'
+        src, out, res = _apply(tmp_path, body, [{'original': 'z umwoa', 'corrected': 'z umowa'}])
+        assert _statuses(res) == ['applied']
+        assert verify(src, out)['ok'] is True
+
+    def test_wpis_katalogu_w_zip_nie_daje_falszywego_fail(self, tmp_path):
+        src = _docx(tmp_path / 'in.docx', '<w:p><w:r><w:t>Ala ma kta.</w:t></w:r></w:p>', {'word/': ''})
+        out = str(tmp_path / 'out.docx')
+        apply_docx(src, [{'original': 'kta', 'corrected': 'kota'}], out, author='T', date_str='2026-09-24T00:00:00Z')
+        assert verify(src, out)['ok'] is True
+
+    def test_przecinek_po_hiperlaczu_poza_linkiem(self, tmp_path):
+        body = (
+            '<w:p><w:hyperlink><w:r><w:t>Sąd Rejonowy</w:t></w:r></w:hyperlink>'
+            '<w:r><w:t xml:space="preserve"> w Lesznie</w:t></w:r></w:p>'
+        )
+        src, out, res = _apply(tmp_path, body, [{'original': 'Rejonowy w', 'corrected': 'Rejonowy, w'}])
+        assert _statuses(res) == ['applied']
+        assert '<w:ins' not in _doc_xml(out).split('</w:hyperlink>')[0]
+        assert verify(src, out)['ok'] is True
+
+    def test_rozne_czcionki_to_mieszane_formatowanie(self, tmp_path):
+        body = (
+            '<w:p><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/></w:rPr><w:t>Pow</w:t></w:r>'
+            '<w:r><w:rPr><w:rFonts w:ascii="Times" w:hAnsi="Times"/></w:rPr><w:t>od</w:t></w:r></w:p>'
+        )
+        src, out, res = _apply(tmp_path, body, [{'original': 'Powod', 'corrected': 'Powód'}])
+        assert _statuses(res) == ['rejected']
+
+    def test_sama_podpowiedz_czcionki_nie_blokuje(self, tmp_path):
+        body = (
+            '<w:p><w:r><w:rPr><w:rFonts w:hint="eastAsia"/></w:rPr><w:t>Pow</w:t></w:r>'
+            '<w:r><w:t>od wnosi</w:t></w:r></w:p>'
+        )
+        src, out, res = _apply(tmp_path, body, [{'original': 'Powod', 'corrected': 'Powód'}])
+        assert _statuses(res) == ['applied']
+
+    def test_przylegajace_zmiany_to_osobne_wiersze(self, tmp_path):
+        body = '<w:p><w:r><w:t>kot pies i ryba</w:t></w:r></w:p>'
+        src, out, res = _apply(tmp_path, body, [
+            {'original': 'kot pies', 'corrected': 'kot, pies'},
+            {'original': 'kot', 'corrected': 'kotek'},
+        ])
+        assert _statuses(res) == ['applied', 'applied']
+        rows = [(c['deleted'], c['inserted']) for c in verify(src, out)['changes']]
+        assert sorted(rows) == [('', ','), ('kot', 'kotek')]
+
+    def test_podzial_bez_preserve_nie_dodaje_preserve_lewej_czesci(self, tmp_path):
+        body = '<w:p><w:r><w:t>Ala umwoa kota</w:t></w:r></w:p>'
+        src, out, res = _apply(tmp_path, body, [{'original': 'umwoa', 'corrected': 'umowa'}])
+        xml = _doc_xml(out)
+        assert '<w:t xml:space="preserve">Ala </w:t>' in xml
+        assert '<w:t xml:space="preserve"> kota</w:t>' in xml
+        assert verify(src, out)['ok'] is True
+
+
 @pytest.mark.parametrize('body', [
     '<w:p><w:r><w:t>Ala ma kta.</w:t></w:r></w:p>',
     '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Komorka umwoa.</w:t></w:r></w:p></w:tc></w:tr></w:tbl>',

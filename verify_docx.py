@@ -222,11 +222,17 @@ def list_changes(out_root, in_root, old_ids: set[str]) -> list[dict]:
             if pieces[i][0] == 'plain':
                 i += 1
                 continue
+            # Jedna zmiana = jeden w:del/w:ins albo para w:del + bezpośrednio po nim w:ins.
             j = i
             deleted, inserted = [], []
             revs = []
             while j < len(pieces) and pieces[j][0] != 'plain':
                 mode, text, rev = pieces[j]
+                if revs and rev is not revs[-1]:
+                    pair = (revs[-1].tag == f'{W}del' and rev.tag == f'{W}ins'
+                            and len(revs) == 1 and revs[-1].getnext() is rev)
+                    if not pair:
+                        break
                 (deleted if mode == 'del' else inserted).append(text)
                 if rev not in revs:
                     revs.append(rev)
@@ -248,7 +254,9 @@ def verify(original_path: str, corrected_path: str) -> dict:
     """{'ok': bool, 'errors': [...], 'changes': [...], 'preexisting': int}. Wyjątek = plik nieczytelny."""
     errors: list[str] = []
     with zipfile.ZipFile(original_path) as za, zipfile.ZipFile(corrected_path) as zb:
-        names_a, names_b = set(za.namelist()), set(zb.namelist())
+        # Wpisy katalogów (np. "word/") nie niosą treści, a pack() ich nie odtwarza.
+        names_a = {n for n in za.namelist() if not n.endswith('/')}
+        names_b = {n for n in zb.namelist() if not n.endswith('/')}
         for name in sorted(names_a - names_b):
             errors.append(f'brak pliku w ZIP: {name}')
         for name in sorted(names_b - names_a):

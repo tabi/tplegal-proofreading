@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Extract plain text from a DOCX file for proofreading.
 
-Reads word/document.xml body paragraphs and outputs numbered text.
-Skips empty paragraphs, field codes, and existing tracked changes.
+Numerowane akapity treści głównej (¶001: …) — ten sam tekst i ta sama numeracja,
+na których pracuje apply-corrections (wspólny docmodel). Widok = tak, jak Word
+wyświetla dokument: bez tekstu usuniętego (w:del), z tekstem wstawionym (w:ins)
+i hiperłączami.
+
+Elementy nietekstowe są widoczne jako znaczniki, których NIE wolno zmieniać:
+  \\t tabulator, ↵ złamanie wiersza, [^N] odnośnik przypisu, [obraz], [wzór], □ symbol.
 
 Usage:
-    extract-text input.docx
     extract-text input.docx > tekst.txt
 """
 
@@ -14,36 +18,18 @@ import sys
 import zipfile
 from pathlib import Path
 
-import defusedxml.minidom as minidom_mod
+from docmodel import Document, parse_xml
 
-from minidom_helpers import extract_paragraph_text, find_elements, match_local
-
-
-def _is_field_paragraph(p_elem) -> bool:
-    """Check if paragraph contains only field code elements (no real text)."""
-    has_field = False
-    has_text = False
-    for child in p_elem.childNodes:
-        if child.nodeType != child.ELEMENT_NODE:
-            continue
-        name = child.localName or child.tagName
-        if match_local(name, "r"):
-            for sub in child.childNodes:
-                if sub.nodeType != sub.ELEMENT_NODE:
-                    continue
-                sname = sub.localName or sub.tagName
-                if match_local(sname, "fldChar") or match_local(sname, "instrText"):
-                    has_field = True
-                elif match_local(sname, "t"):
-                    if sub.firstChild and hasattr(sub.firstChild, "data") and sub.firstChild.data.strip():
-                        has_text = True
-    return has_field and not has_text
+LEGEND = (
+    'Zakres: treść główna. Przypisy, nagłówki, stopki i pola tekstowe NIE są czytane.\n'
+    'Znaczniki (nie zmieniaj ich): \\t tabulator, ↵ złamanie wiersza, [^N] przypis, [obraz], [wzór], □ symbol.'
+)
 
 
 def extract_text(docx_path: str) -> list[str]:
     """Extract numbered paragraph texts from a DOCX file.
 
-    Returns list of strings like '001: Tekst akapitu...'
+    Returns list of strings like '¶001: Tekst akapitu...'
     """
     path = Path(docx_path)
     if not path.exists():
@@ -52,42 +38,9 @@ def extract_text(docx_path: str) -> list[str]:
     with zipfile.ZipFile(path, "r") as zf:
         if "word/document.xml" not in zf.namelist():
             raise ValueError(f"No word/document.xml in {docx_path}")
-        doc_xml = zf.read("word/document.xml").decode("utf-8")
+        root = parse_xml(zf.read("word/document.xml"))
 
-    dom = minidom_mod.parseString(doc_xml)
-    root = dom.documentElement
-
-    # Find body element
-    body = None
-    for child in root.childNodes:
-        if child.nodeType == child.ELEMENT_NODE:
-            name = child.localName or child.tagName
-            if match_local(name, "body"):
-                body = child
-                break
-    if body is None:
-        body = root
-
-    lines = []
-    num = 0
-    for p_elem in find_elements(body, "p"):
-        # Skip paragraphs inside tracked changes at document level
-        # (these are rare but possible in some OOXML constructs)
-
-        # Skip field-only paragraphs
-        if _is_field_paragraph(p_elem):
-            continue
-
-        text = extract_paragraph_text(p_elem, mode="visible")
-
-        # Skip empty paragraphs
-        if not text.strip():
-            continue
-
-        num += 1
-        lines.append(f"\u00b6{num:03d}: {text}")
-
-    return lines
+    return [f"¶{p.index:03d}: {p.text}" for p in Document(root).numbered()]
 
 
 def main():
@@ -105,6 +58,7 @@ def main():
 
     for line in lines:
         print(line)
+    print(f"{LEGEND}\nAkapitów: {len(lines)}", file=sys.stderr)
 
 
 if __name__ == "__main__":
